@@ -13,16 +13,19 @@
       <p class="text-sm text-gray-600">上傳 <span class="font-medium">政大全人系統</span> 匯出的 <span class="font-mono">.html</span> 檔案。前端會在瀏覽器本機解析「成績紀錄」（<span class="font-mono">id=item-9</span>）中的表格並計算。</p>
     </header>
 
-    <!-- 控制面板 -->
     <section class="grid md:grid-cols-2 gap-4 mb-6">
       <div class="p-4 bg-white rounded-2xl shadow">
         <h2 class="font-semibold mb-2">1) 上傳檔案</h2>
-        <label for="fileInput" class="block border-2 border-dashed rounded-xl p-6 text-center hover:bg-gray-50 cursor-pointer" id="dropZone">
+        <label for="fileInput" id="dropZone" class="block border-2 border-dashed rounded-xl p-6 text-center hover:bg-gray-50 cursor-pointer">
           <div class="text-sm">拖曳 HTML 檔到此，或點擊選擇</div>
           <div class="text-xs text-gray-500 mt-1">需包含 <span class="font-mono">id=item-9</span> 的「成績紀錄」區塊</div>
-          <input id="fileInput" type="file" accept=".html,.htm,.xhtml,.shtml,.php,.asp,.aspx,.mhtml,.txt" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;" />
         </label>
-        <div id="fileInfo" class="text-xs text-gray-500 mt-2"></div>
+        <!-- 視覺隱藏但可觸發（避免某些瀏覽器阻擋 display:none 的 click） -->
+        <input id="fileInput" type="file" accept=".html,.htm,.xhtml,.shtml,.php,.asp,.aspx,.mhtml,.txt" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;" />
+        <div class="mt-2 flex items-center gap-2">
+          <button id="pickBtn" type="button" class="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50">選擇檔案</button>
+          <span id="fileInfo" class="text-xs text-gray-500"></span>
+        </div>
       </div>
 
       <div class="p-4 bg-white rounded-2xl shadow">
@@ -56,7 +59,6 @@
             <div id="typeFilters" class="flex flex-wrap gap-2"></div>
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <button id="pickBtn" class="py-2 rounded-xl border font-medium hover:bg-gray-50" type="button">選擇檔案</button>
             <button id="calcBtn" class="py-2 rounded-xl bg-black text-white font-medium hover:opacity-90">計算</button>
             <button id="exportBtn" class="py-2 rounded-xl border font-medium hover:bg-gray-50" disabled>匯出整理後 CSV</button>
           </div>
@@ -64,13 +66,11 @@
       </div>
     </section>
 
-    <!-- 結果卡片 -->
     <section id="resultCard" class="hidden p-4 bg-white rounded-2xl shadow mb-6">
       <h2 class="font-semibold mb-2">結果</h2>
       <div id="results" class="grid md:grid-cols-4 gap-3 text-sm"></div>
     </section>
 
-    <!-- 表格區 -->
     <section class="p-4 bg-white rounded-2xl shadow">
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-semibold">課程明細（已套用排除/篩選規則）</h2>
@@ -92,282 +92,66 @@
   </div>
 
   <script>
-    // ======= GPA 尺度換算 =======
-    function toGPA43(score) {
-      if (score >= 90) return 4.3;
-      if (score >= 85) return 4.0;
-      if (score >= 80) return 3.7;
-      if (score >= 77) return 3.3;
-      if (score >= 73) return 3.0;
-      if (score >= 70) return 2.7;
-      if (score >= 67) return 2.3;
-      if (score >= 63) return 2.0;
-      if (score >= 60) return 1.7;
-      return 0.0;
-    }
-    function toGPA40(score) {
-      if (score >= 90) return 4.0;
-      if (score >= 85) return 3.7;
-      if (score >= 80) return 3.3;
-      if (score >= 77) return 3.0;
-      if (score >= 73) return 2.7;
-      if (score >= 70) return 2.3;
-      if (score >= 67) return 2.0;
-      if (score >= 63) return 1.7;
-      if (score >= 60) return 1.0;
-      return 0.0;
-    }
+    // —— 小工具 ——
+    function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));}
+    function toFloat(s){const t=String(s??'').trim().replace('%','').replace(/,/g,'');const v=parseFloat(t);return Number.isFinite(v)?v:NaN;}
+    function downloadCSV(filename, header, rows){const csv=[header.join(','),...rows.map(r=>r.map(x=>String(x).includes(',')?`"${String(x).replace(/"/g,'""')}"`:String(x)).join(','))].join('
+');const blob=new Blob(["﻿"+csv],{type:'text/csv;charset=utf-8;'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();URL.revokeObjectURL(a.href);}    
 
-    // ======= 解析 HTML → 找 item-9 → 取所有 table → 轉為 2D 陣列 =======
-    const REQUIRED = new Set(["學年","學期","科目代號","科目名稱","修別","學分數","成績"]);
+    // —— GPA 尺度 ——
+    function toGPA43(score){if(score>=90)return 4.3; if(score>=85)return 4.0; if(score>=80)return 3.7; if(score>=77)return 3.3; if(score>=73)return 3.0; if(score>=70)return 2.7; if(score>=67)return 2.3; if(score>=63)return 2.0; if(score>=60)return 1.7; return 0.0;}
+    function toGPA40(score){if(score>=90)return 4.0; if(score>=85)return 3.7; if(score>=80)return 3.3; if(score>=77)return 3.0; if(score>=73)return 2.7; if(score>=70)return 2.3; if(score>=67)return 2.0; if(score>=63)return 1.7; if(score>=60)return 1.0; return 0.0;}
 
-    function parseHTMLTables(htmlText) {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlText, 'text/html');
-      const section = doc.getElementById('item-9');
-      if (!section) throw new Error('找不到「成績紀錄」區塊（id=item-9）。');
-      const tables = Array.from(section.querySelectorAll('table'));
-      if (!tables.length) throw new Error('「成績紀錄」區塊內找不到任何表格。');
-      return tables.map(tableToMatrix);
-    }
+    // —— 抓 item-9 中的所有 table → 轉 2D 陣列 ——
+    const REQUIRED=new Set(['學年','學期','科目代號','科目名稱','修別','學分數','成績']);
+    function parseHTMLTables(htmlText){const parser=new DOMParser();const doc=parser.parseFromString(htmlText,'text/html');const section=doc.getElementById('item-9');if(!section)throw new Error('找不到「成績紀錄」區塊（id=item-9）。');const tbls=Array.from(section.querySelectorAll('table'));if(!tbls.length)throw new Error('「成績紀錄」區塊內找不到任何表格。');return tbls.map(tableToMatrix);}    
+    function tableToMatrix(tbl){const rows=Array.from(tbl.querySelectorAll('tr'));return rows.map(tr=>Array.from(tr.children).map(td=>td.textContent.trim()));}
+    function looksLikeGradeTable(mat){if(!mat.length)return false;const cols=new Set(mat[0].map(String));return [...REQUIRED].every(k=>cols.has(k));}
+    function coerceGradeTables(mats){let ok=mats.filter(looksLikeGradeTable);if(ok.length)return ok.map(m=>({header:m[0],rows:m.slice(1)}));const fixed=[];for(const m of mats){if(m.length>1){const header=m[0].map(String);const rows=m.slice(1);const cols=new Set(header);if([...
+REQUIRED].every(k=>cols.has(k)))fixed.push({header,rows});}}return fixed;}
 
-    function tableToMatrix(tbl) {
-      const rows = Array.from(tbl.querySelectorAll('tr'));
-      return rows.map(tr => Array.from(tr.children).map(td => td.textContent.trim()));
-    }
+    // —— 狀態元素 ——
+    const fileInput=document.getElementById('fileInput');
+    const pickBtn=document.getElementById('pickBtn');
+    const dropZone=document.getElementById('dropZone');
+    const fileInfo=document.getElementById('fileInfo');
+    const thead=document.getElementById('thead');
+    const tbody=document.getElementById('tbody');
+    const rowCount=document.getElementById('rowCount');
+    const scaleSel=document.getElementById('scale');
+    const excludeEmpty=document.getElementById('excludeEmpty');
+    const excludeZeroCredit=document.getElementById('excludeZeroCredit');
+    const excludeKw=document.getElementById('excludeKw');
+    const calcBtn=document.getElementById('calcBtn');
+    const exportBtn=document.getElementById('exportBtn');
+    const results=document.getElementById('results');
+    const resultCard=document.getElementById('resultCard');
+    const typeFilters=document.getElementById('typeFilters');
 
-    function looksLikeGradeTable(matrix) {
-      if (!matrix.length) return false;
-      const header = matrix[0];
-      const cols = new Set(header.map(String));
-      return [...REQUIRED].every(k => cols.has(k));
-    }
+    let merged=[]; // 解析後的列（物件）
+    let header=[];
 
-    function coerceGradeTables(mats) {
-      // 先直接看第一列為欄名
-      let ok = mats.filter(looksLikeGradeTable);
-      if (ok.length) return ok.map(m => ({header: m[0], rows: m.slice(1)}));
-
-      // 嘗試把第一列提升為欄名（有些表第一列是欄名、第二列起才是資料）
-      const fixed = [];
-      for (const m of mats) {
-        if (m.length > 1) {
-          const header = m[0].map(String);
-          const rows = m.slice(1);
-          const cols = new Set(header);
-          if ([...REQUIRED].every(k => cols.has(k))) fixed.push({header, rows});
-        }
-      }
-      return fixed;
-    }
-
-    // ======= 工具 =======
-    function toFloat(s) {
-      const t = String(s ?? '').trim().replace('%','').replace(/,/g,'');
-      const v = parseFloat(t);
-      return Number.isFinite(v) ? v : NaN;
-    }
-    function escapeHtml(s) {return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));}
-    function downloadCSV(filename, header, rows) {
-      const csv = [header.join(','), ...rows.map(r => r.map(x => String(x).includes(',')?`"${String(x).replace(/"/g,'""')}"`:String(x)).join(','))].join('
-');
-      const blob = new Blob(["﻿" + csv], {type: 'text/csv;charset=utf-8;'});
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    }
-
-    // ======= 狀態 =======
-    let rawTables = [];      // {header, rows}*
-    let merged = [];         // 合併後 rows（物件）
-    let header = [];         // 欄名（取第一個表的）
-
-    const fileInput = document.getElementById('fileInput');
-    const pickBtn = document.getElementById('pickBtn');
-        const fileInfo  = document.getElementById('fileInfo');
-    const thead = document.getElementById('thead');
-    const tbody = document.getElementById('tbody');
-    const rowCount = document.getElementById('rowCount');
-    const scaleSel = document.getElementById('scale');
-    const excludeEmpty = document.getElementById('excludeEmpty');
-    const excludeZeroCredit = document.getElementById('excludeZeroCredit');
-    const excludeKw = document.getElementById('excludeKw');
-    const calcBtn = document.getElementById('calcBtn');
-    const exportBtn = document.getElementById('exportBtn');
-    const results = document.getElementById('results');
-    const resultCard = document.getElementById('resultCard');
-    const typeFilters = document.getElementById('typeFilters');
-
-    // 上傳/拖放處理
+    // —— 事件：選檔 / 拖放 ——
     fileInput.addEventListener('change', onPick);
-    pickBtn.addEventListener('click', () => { try { fileInput.click(); } catch(e) { alert('瀏覽器阻擋了檔案選擇：'+ e.message); }});
-    const dropZone = document.querySelector('label[for="fileInput"]');
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('bg-gray-50'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('bg-gray-50'));
-    dropZone.addEventListener('drop', async (e) => {
-      e.preventDefault(); dropZone.classList.remove('bg-gray-50');
-      const f = e.dataTransfer.files?.[0];
-      if (!f) return;
-      fileInput.files = e.dataTransfer.files;
-      await onPick();
-    });
+    pickBtn.addEventListener('click',()=>{try{fileInput.click();}catch(e){alert('瀏覽器阻擋了檔案選擇：'+e.message);}});
+    dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('bg-gray-50');});
+    dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('bg-gray-50'));
+    dropZone.addEventListener('drop',async e=>{e.preventDefault();dropZone.classList.remove('bg-gray-50');const f=e.dataTransfer.files?.[0];if(!f)return;fileInput.files=e.dataTransfer.files;await onPick();});
 
-    async function onPick() {
-      const f = fileInput.files?.[0];
-      if (!f) return;
-      fileInfo.textContent = `已選擇：${f.name}（${(f.size/1024).toFixed(1)} KB）`;
-      const text = await f.text();
-      try {
-        const mats = parseHTMLTables(text);
-        rawTables = coerceGradeTables(mats);
-        if (!rawTables.length) throw new Error('解析到的表格中沒有符合「成績紀錄」欄位結構的表。');
-        // 合併所有表
-        header = rawTables[0].header.map(h => String(h).trim());
-        merged = [];
-        for (const {header: h, rows} of rawTables) {
-          const cols = h.map(x => String(x).trim());
-          for (const r of rows) {
-            const obj = {};
-            cols.forEach((c,i)=> obj[c] = r[i] ?? '');
-            merged.push(obj);
-          }
-        }
-        buildTypeFilters(merged);
-        renderTable(header, merged);
-        resultCard.classList.add('hidden');
-        exportBtn.disabled = true;
-      } catch (err) {
-        alert(err.message || String(err));
-      }
-    }
+    async function onPick(){const f=fileInput.files?.[0];if(!f)return;fileInfo.textContent=`已選擇：${f.name}（${(f.size/1024).toFixed(1)} KB）`;const text=await f.text();try{const mats=parseHTMLTables(text);const packs=coerceGradeTables(mats);if(!packs.length)throw new Error('解析到的表格中沒有符合「成績紀錄」欄位結構的表。');header=packs[0].header.map(h=>String(h).trim());merged=[];for(const {header:h,rows} of packs){const cols=h.map(x=>String(x).trim());for(const r of rows){const obj={};cols.forEach((c,i)=>obj[c]=r[i]??'');merged.push(obj);}}buildTypeFilters(merged);renderTable(header,merged);resultCard.classList.add('hidden');exportBtn.disabled=true;}catch(err){alert(err.message||String(err));}}
 
-    function buildTypeFilters(recs) {
-      typeFilters.innerHTML = '';
-      const typeName = '修別';
-      if (!recs.length || !(typeName in recs[0])) { typeFilters.innerHTML = '<div class="text-xs text-gray-500">未偵測到「修別」欄</div>'; return; }
-      const set = new Set(recs.map(r => String(r[typeName] ?? '').trim()).filter(Boolean));
-      for (const t of Array.from(set)) {
-        const id = 'type_' + t;
-        typeFilters.insertAdjacentHTML('beforeend', `
-          <label class="inline-flex items-center gap-2 border rounded-full px-3 py-1">
-            <input type="checkbox" class="rounded" id="${id}" data-type="${t.replace(/\"/g,'&quot;')}" checked />
-            <span>${escapeHtml(t)}</span>
-          </label>
-        `);
-      }
-    }
-    function activeTypes() {
-      const checks = typeFilters.querySelectorAll('input[type="checkbox"]');
-      const act = [];
-      checks.forEach(ch => { if (ch.checked) act.push(ch.dataset.type); });
-      return act;
-    }
+    function buildTypeFilters(recs){typeFilters.innerHTML='';const typeName='修別';if(!recs.length||!(typeName in recs[0])){typeFilters.innerHTML='<div class="text-xs text-gray-500">未偵測到「修別」欄</div>';return;}const set=new Set(recs.map(r=>String(r[typeName]??'').trim()).filter(Boolean));for(const t of Array.from(set)){const id='type_'+encodeURIComponent(t);typeFilters.insertAdjacentHTML('beforeend',`<label class="inline-flex items-center gap-2 border rounded-full px-3 py-1"><input type="checkbox" class="rounded" id="${id}" data-type="${encodeURIComponent(t)}" checked /><span>${escapeHtml(t)}</span></label>`);} }
+    function activeTypes(){const checks=typeFilters.querySelectorAll('input[type="checkbox"]');const act=[];checks.forEach(ch=>{if(ch.checked)act.push(decodeURIComponent(ch.dataset.type));});return act;}
 
-    function renderTable(head, recs) {
-      thead.innerHTML = head.map(h => `<th class="px-3 py-2 text-left font-semibold">${escapeHtml(h)}</th>`).join('');
-      tbody.innerHTML = '';
-      for (const row of recs) {
-        const tds = head.map(h => `<td class="px-3 py-2 whitespace-nowrap">${escapeHtml(String(row[h] ?? ''))}</td>`).join('');
-        tbody.insertAdjacentHTML('beforeend', `<tr>${tds}</tr>`);
-      }
-      rowCount.textContent = `共 ${recs.length} 筆`;
-    }
+    function renderTable(head,recs){thead.innerHTML=head.map(h=>`<th class="px-3 py-2 text-left font-semibold">${escapeHtml(h)}</th>`).join('');tbody.innerHTML='';for(const row of recs){const tds=head.map(h=>`<td class="px-3 py-2 whitespace-nowrap">${escapeHtml(String(row[h]??''))}</td>`).join('');tbody.insertAdjacentHTML('beforeend',`<tr>${tds}</tr>`);}rowCount.textContent=`共 ${recs.length} 筆`;}
 
-    function filterAndCompute() {
-      if (!merged.length) { alert('請先上傳 HTML'); return null; }
-      const exKw = excludeKw.value.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-      const acts = activeTypes();
-      const recs = [];
+    function filterAndCompute(){if(!merged.length){alert('請先上傳 HTML');return null;}const exKw=excludeKw.value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);const acts=activeTypes();const recs=[];for(const r of merged){const credit=toFloat(r['學分數']);const scoreRaw=String(r['成績']??'').trim();const typeVal=String(r['修別']??'').trim();if(excludeEmpty.checked&&scoreRaw==='')continue;if(excludeZeroCredit.checked&&(!Number.isFinite(credit)||credit<=0))continue;const lower=scoreRaw.toLowerCase();if(exKw.length&&exKw.some(k=>k&&lower.includes(k)))continue;if(acts.length&&!acts.includes(typeVal))continue;const s=toFloat(scoreRaw);if(!Number.isFinite(credit)||!Number.isFinite(s))continue;recs.push({...r,_credit:credit,_score:s});}let sumWeighted=0,sumCredit=0,sumGPA43=0,sumGPA40=0;for(const r of recs){const c=r._credit,s=r._score;sumWeighted+=s*c;sumCredit+=c;sumGPA43+=toGPA43(s)*c;sumGPA40+=toGPA40(s)*c;}const avgScore=sumCredit?(sumWeighted/sumCredit):0;const gpa43=sumCredit?(sumGPA43/sumCredit):0;const gpa40=sumCredit?(sumGPA40/sumCredit):0;return {recs,sumCredit,avgScore,gpa43,gpa40};}
 
-      for (const r of merged) {
-        const credit = toFloat(r['學分數']);
-        const scoreRaw = String(r['成績'] ?? '').trim();
-        const typeVal = String(r['修別'] ?? '').trim();
+    calcBtn.addEventListener('click',()=>{const out=filterAndCompute();if(!out)return;const {recs,sumCredit,avgScore,gpa43,gpa40}=out;results.innerHTML='';const scale=scaleSel.value;const cards=[];if(scale==='avg'){cards.push(metric('加權平均分',avgScore.toFixed(2)));}else if(scale==='4.3'){cards.push(metric('GPA（4.3 加權）',gpa43.toFixed(3)));cards.push(metric('加權平均分',avgScore.toFixed(2)));}else{cards.push(metric('GPA（4.0 加權）',gpa40.toFixed(3)));cards.push(metric('加權平均分',avgScore.toFixed(2)));}cards.push(metric('有效學分數',sumCredit.toFixed(1)));results.insertAdjacentHTML('beforeend',cards.join(''));resultCard.classList.remove('hidden');const head=header.includes('備註')?['學年','學期','科目代號','科目名稱','修別','學分數','成績','備註']:['學年','學期','科目代號','科目名稱','修別','學分數','成績'];const rows=recs.map(r=>head.map(h=>r[h]??''));renderTable(head,rows.map(arr=>Object.fromEntries(head.map((h,i)=>[h,arr[i]]))));exportBtn.disabled=recs.length===0;});
 
-        if (excludeEmpty.checked && scoreRaw === '') continue;
-        if (excludeZeroCredit.checked && (!Number.isFinite(credit) || credit <= 0)) continue;
+    exportBtn.addEventListener('click',()=>{const out=filterAndCompute();if(!out)return;const {recs}=out;const head=header.includes('備註')?['學年','學期','科目代號','科目名稱','修別','學分數','成績','備註']:['學年','學期','科目代號','科目名稱','修別','學分數','成績'];const extra=['GPA_4_3','GPA_4_0','加權分數','加權GPA43','加權GPA40'];const fullHeader=[...head,...extra];const rows=recs.map(r=>{const c=r._credit,s=r._score;return [...head.map(h=>r[h]??''),toGPA43(s).toFixed(3),toGPA40(s).toFixed(3),(c*s).toFixed(3),(toGPA43(s)*c).toFixed(3),(toGPA40(s)*c).toFixed(3)];});downloadCSV('gpa_from_html.csv',fullHeader,rows);});
 
-        const lower = scoreRaw.toLowerCase();
-        if (exKw.length && exKw.some(k => k && lower.includes(k))) continue;
-        if (acts.length && !acts.includes(typeVal)) continue;
-
-        const s = toFloat(scoreRaw);
-        if (!Number.isFinite(credit) || !Number.isFinite(s)) continue;
-
-        recs.push({ ...r, _credit: credit, _score: s });
-      }
-
-      let sumWeighted = 0, sumCredit = 0, sumGPA43 = 0, sumGPA40 = 0;
-      for (const r of recs) {
-        const c = r._credit; const s = r._score;
-        sumWeighted += s * c; sumCredit += c; sumGPA43 += toGPA43(s) * c; sumGPA40 += toGPA40(s) * c;
-      }
-
-      const avgScore = sumCredit ? (sumWeighted / sumCredit) : 0;
-      const gpa43 = sumCredit ? (sumGPA43 / sumCredit) : 0;
-      const gpa40 = sumCredit ? (sumGPA40 / sumCredit) : 0;
-
-      return { recs, sumCredit, avgScore, gpa43, gpa40 };
-    }
-
-    calcBtn.addEventListener('click', () => {
-      const out = filterAndCompute();
-      if (!out) return;
-      const { recs, sumCredit, avgScore, gpa43, gpa40 } = out;
-
-      results.innerHTML = '';
-      const scale = scaleSel.value;
-      const cards = [];
-      if (scale === 'avg') {
-        cards.push(metric('加權平均分', avgScore.toFixed(2)));
-      } else if (scale === '4.3') {
-        cards.push(metric('GPA（4.3 加權）', gpa43.toFixed(3)));
-        cards.push(metric('加權平均分', avgScore.toFixed(2)));
-      } else {
-        cards.push(metric('GPA（4.0 加權）', gpa40.toFixed(3)));
-        cards.push(metric('加權平均分', avgScore.toFixed(2)));
-      }
-      cards.push(metric('有效學分數', sumCredit.toFixed(1)));
-      results.insertAdjacentHTML('beforeend', cards.join(''));
-      resultCard.classList.remove('hidden');
-
-      // 重新渲染表格（套用過濾後內容，只保留常見欄位 + 計算欄）
-      const head = header.includes('備註') ? ['學年','學期','科目代號','科目名稱','修別','學分數','成績','備註'] : ['學年','學期','科目代號','科目名稱','修別','學分數','成績'];
-      const rows = recs.map(r => head.map(h => r[h] ?? ''));
-      renderTable(head, rows.map(arr => Object.fromEntries(head.map((h,i)=>[h,arr[i]]))));
-
-      exportBtn.disabled = recs.length === 0;
-    });
-
-    exportBtn.addEventListener('click', () => {
-      const out = filterAndCompute();
-      if (!out) return;
-      const { recs } = out;
-      const head = header.includes('備註') ? ['學年','學期','科目代號','科目名稱','修別','學分數','成績','備註'] : ['學年','學期','科目代號','科目名稱','修別','學分數','成績'];
-      const extra = ['GPA_4_3','GPA_4_0','加權分數','加權GPA43','加權GPA40'];
-      const fullHeader = [...head, ...extra];
-      const rows = recs.map(r => {
-        const c = r._credit, s = r._score;
-        return [
-          ...head.map(h => r[h] ?? ''),
-          toGPA43(s).toFixed(3),
-          toGPA40(s).toFixed(3),
-          (c*s).toFixed(3),
-          (toGPA43(s)*c).toFixed(3),
-          (toGPA40(s)*c).toFixed(3)
-        ];
-      });
-      downloadCSV('gpa_from_html.csv', fullHeader, rows);
-    });
-
-    function metric(label, value) {
-      return `<div class="p-3 rounded-xl border bg-gray-50">
-        <div class="text-xs text-gray-500">${label}</div>
-        <div class="text-lg font-semibold">${value}</div>
-      </div>`;
-    }
+    function metric(label,value){return `<div class="p-3 rounded-xl border bg-gray-50"><div class="text-xs text-gray-500">${label}</div><div class="text-lg font-semibold">${value}</div></div>`;}
   </script>
 </body>
 </html>
