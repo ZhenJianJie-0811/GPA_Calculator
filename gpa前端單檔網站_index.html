@@ -168,8 +168,9 @@
     }
     function escapeHtml(s) {return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));}
     function downloadCSV(filename, header, rows) {
-      const csv = [header.join(','), ...rows.map(r => r.map(x => String(x).includes(',')?`"${String(x).replace(/"/g,'""')}"`:String(x)).join(','))].join('\n');
-      const blob = new Blob(["\ufeff" + csv], {type: 'text/csv;charset=utf-8;'});
+      const csv = [header.join(','), ...rows.map(r => r.map(x => String(x).includes(',')?`"${String(x).replace(/"/g,'""')}"`:String(x)).join(','))].join('
+');
+      const blob = new Blob(["﻿" + csv], {type: 'text/csv;charset=utf-8;'});
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = filename;
